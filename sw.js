@@ -1,5 +1,5 @@
 // Service Worker - 订单与应收账款管理系统
-const CACHE_NAME = 'order-ar-system-v2';
+const CACHE_NAME = 'order-ar-system-v3';
 const ASSETS = [
   './',
   './index.html',
@@ -29,9 +29,11 @@ self.addEventListener('activate', e => {
   );
 });
 
-// 请求拦截：网络优先，失败回退缓存
+// 请求拦截：API请求不走缓存，静态资源网络优先
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+  // API请求直接走网络，不缓存
+  if (e.request.url.includes('/api/')) return;
   e.respondWith(
     fetch(e.request)
       .then(res => {
