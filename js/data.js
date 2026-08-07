@@ -1,33 +1,118 @@
 // ==================== 数据管理层 (data.js) ====================
-// 基于 localStorage 的数据存储
+// 云端数据库版 - 通过API与MySQL数据库交互
+// 内存缓存 + 异步API同步
+
+const API_BASE = window.API_BASE_URL || '';
+
+// API请求工具函数
+async function apiPost(path, body) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  return res.json();
+}
+
+async function apiPut(path, body) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  return res.json();
+}
+
+async function apiDelete(path) {
+  const res = await fetch(`${API_BASE}${path}`, { method: 'DELETE' });
+  return res.json();
+}
+
+// 异步同步到API（失败时静默处理，仅控制台报错）
+function syncPost(table, item) {
+  fetch(`${API_BASE}/api/${table}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(item)
+  }).catch(e => console.error(`同步新增${table}失败:`, e));
+}
+
+function syncPut(table, id, updates) {
+  fetch(`${API_BASE}/api/${table}/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates)
+  }).catch(e => console.error(`同步更新${table}失败:`, e));
+}
+
+function syncDelete(table, id) {
+  fetch(`${API_BASE}/api/${table}/${encodeURIComponent(id)}`, {
+    method: 'DELETE'
+  }).catch(e => console.error(`同步删除${table}失败:`, e));
+}
 
 const Store = {
-  STORAGE_KEY: 'order_ar_system_data',
   data: null,
+  loading: false,
 
-  init() {
-    const stored = localStorage.getItem(this.STORAGE_KEY);
-    if (stored) {
-      try { this.data = JSON.parse(stored); } catch(e) { this.data = this.defaultData(); }
-    } else {
-      this.data = this.defaultData();
-      this.save();
+  // ===== 初始化：从API加载全部数据 =====
+  async init() {
+    this.loading = true;
+    try {
+      const res = await fetch(`${API_BASE}/api/all`);
+      if (!res.ok) throw new Error('API返回错误: ' + res.status);
+      this.data = await res.json();
+      // 确保所有表存在
+      if (!this.data.seq) this.data.seq = {};
+      if (!this.data.currentDept) this.data.currentDept = 1;
+    } catch(e) {
+      console.error('从API加载数据失败:', e);
+      // 降级：使用localStorage缓存
+      const stored = localStorage.getItem('order_ar_system_data');
+      if (stored) {
+        try { this.data = JSON.parse(stored); } catch(_) { this.data = this.defaultData(); }
+      } else {
+        this.data = this.defaultData();
+      }
+    } finally {
+      this.loading = false;
     }
   },
 
-  save() { localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.data)); },
+  // 刷新数据（重新从API加载）
+  async refresh() {
+    await this.init();
+  },
 
-  reset() { this.data = this.defaultData(); this.save(); },
+  // save() 已废弃 - 数据通过API自动同步
+  // 保留方法以兼容旧代码调用
+  save() {
+    // 不再需要手动保存，数据变更时已自动同步到API
+  },
+
+  // 重置数据
+  async reset() {
+    try {
+      await apiPost('/api/import', this.defaultData());
+      await this.init();
+    } catch(e) {
+      console.error('重置数据失败:', e);
+      this.data = this.defaultData();
+    }
+  },
 
   // ===== 用户认证 =====
   SESSION_KEY: 'order_ar_session',
 
-  login(username, password) {
-    const user = (this.data.users || []).find(u => u.username === username && u.password === password);
-    if (user) {
-      const session = { username: user.username, name: user.name, deptId: user.deptId, deptName: user.deptName, role: user.role };
-      localStorage.setItem(this.SESSION_KEY, JSON.stringify(session));
-      return session;
+  async login(username, password) {
+    try {
+      const session = await apiPost('/api/auth/login', { username, password });
+      if (session) {
+        localStorage.setItem(this.SESSION_KEY, JSON.stringify(session));
+        return session;
+      }
+    } catch(e) {
+      console.error('登录失败:', e);
     }
     return null;
   },
@@ -48,7 +133,7 @@ const Store = {
   // ===== 密码重置 / 验证码管理 =====
   VERIFY_KEY: 'order_ar_verify',
 
-  // 查找用户（支持内部员工和客户）
+  // 查找用户（从内存缓存）
   findUserByUsername(username) {
     const user = (this.data.users || []).find(u => u.username === username);
     if (user) return { ...user, accountType: 'employee' };
@@ -62,25 +147,22 @@ const Store = {
     return null;
   },
 
-  // 生成验证码
+  // 生成验证码（本地存储，临时数据）
   generateVerifyCode(username, channel) {
     const store = this._getVerifyStore();
     const key = username + '_' + channel;
     const now = Date.now();
 
-    // 检查锁定
     if (store.locks && store.locks[username] && store.locks[username].until > now) {
       return { error: 'locked', until: store.locks[username].until };
     }
 
-    // 检查60秒冷却
-    if (store.codes && store.codes[key] && store.codes[key].sentAt && now - store.codes[username + '_' + channel].sentAt < 60000) {
+    if (store.codes && store.codes[key] && store.codes[key].sentAt && now - store.codes[key].sentAt < 60000) {
       return { error: 'cooldown', remaining: 60 - Math.floor((now - store.codes[key].sentAt) / 1000) };
     }
 
-    // 生成6位数字验证码
     const code = String(Math.floor(100000 + Math.random() * 900000));
-    const expireMs = channel === 'sms' ? 5 * 60 * 1000 : 10 * 60 * 1000; // SMS 5分钟, Email 10分钟
+    const expireMs = channel === 'sms' ? 5 * 60 * 1000 : 10 * 60 * 1000;
 
     if (!store.codes) store.codes = {};
     if (!store.attempts) store.attempts = {};
@@ -97,7 +179,6 @@ const Store = {
     const key = username + '_' + channel;
     const now = Date.now();
 
-    // 检查锁定
     if (store.locks && store.locks[username] && store.locks[username].until > now) {
       return { error: 'locked', until: store.locks[username].until };
     }
@@ -118,46 +199,57 @@ const Store = {
       return { error: 'wrong', attempts: store.attempts[username], remaining: 5 - store.attempts[username] };
     }
 
-    // 验证成功，清除记录
     store.codes[key] = null;
     store.attempts[username] = 0;
     this._saveVerifyStore(store);
     return { success: true };
   },
 
-  // 更新密码
-  updatePassword(username, newPassword) {
-    const user = (this.data.users || []).find(u => u.username === username);
-    if (user) { user.password = newPassword; this.save(); return true; }
-    return false;
+  // 更新密码（异步，写入数据库）
+  async updatePassword(username, newPassword) {
+    try {
+      const result = await apiPost('/api/auth/update-password', { username, newPassword });
+      // 同步更新内存
+      const user = (this.data.users || []).find(u => u.username === username);
+      if (user) user.password = newPassword;
+      return result.success === true;
+    } catch(e) {
+      console.error('更新密码失败:', e);
+      return false;
+    }
   },
 
-  // 更新用户信息（个人信息编辑）
-  updateUser(username, updates) {
-    const user = (this.data.users || []).find(u => u.username === username);
-    if (!user) return null;
-    // 如果改了用户名，需要同步更新 session
-    if (updates.username && updates.username !== username) {
-      // 检查新用户名是否已存在
-      const exists = (this.data.users || []).find(u => u.username === updates.username && u !== user);
-      if (exists) return { error: '该用户名已被占用' };
-      user.username = updates.username;
+  // 更新用户信息（异步，写入数据库）
+  async updateUser(username, updates) {
+    try {
+      const result = await apiPut('/api/auth/update-user', { username, updates });
+      if (result.error) return result;
+
+      // 同步更新内存
+      const user = (this.data.users || []).find(u => u.username === username);
+      if (user) {
+        if (updates.username && updates.username !== username) user.username = updates.username;
+        if (updates.password) user.password = updates.password;
+        if (updates.name) user.name = updates.name;
+        if (updates.role !== undefined) user.role = updates.role;
+        if (updates.phone !== undefined) user.phone = updates.phone;
+        if (updates.email !== undefined) user.email = updates.email;
+      }
+
+      // 更新 session
+      const session = this.getSession();
+      if (session && (session.username === username || (result.user && session.username === username))) {
+        const newUsername = updates.username || username;
+        session.username = newUsername;
+        if (updates.name) session.name = updates.name;
+        if (updates.role !== undefined) session.role = updates.role;
+        localStorage.setItem(this.SESSION_KEY, JSON.stringify(session));
+      }
+      return result;
+    } catch(e) {
+      console.error('更新用户信息失败:', e);
+      return { error: '网络错误，请重试' };
     }
-    if (updates.password) user.password = updates.password;
-    if (updates.name) user.name = updates.name;
-    if (updates.role !== undefined) user.role = updates.role;
-    if (updates.phone !== undefined) user.phone = updates.phone;
-    if (updates.email !== undefined) user.email = updates.email;
-    this.save();
-    // 更新 session
-    const session = this.getSession();
-    if (session && session.username === username) {
-      session.username = user.username;
-      session.name = user.name;
-      session.role = user.role;
-      localStorage.setItem(this.SESSION_KEY, JSON.stringify(session));
-    }
-    return { success: true, user };
   },
 
   // 检查密码强度
@@ -274,17 +366,21 @@ const Store = {
       item.id = prefix + String(this.data.seq[seqKey] || 1).padStart(3, '0');
       this.data.seq[seqKey] = (this.data.seq[seqKey] || 1) + 1;
     }
+    if (!this.data[table]) this.data[table] = [];
     this.data[table].push(item);
-    this.save();
+    // 异步同步到API
+    syncPost(table, item);
     return item;
   },
 
   update(table, id, updates) {
     const items = this.data[table];
+    if (!items) return null;
     const idx = items.findIndex(x => String(x.id) === String(id));
     if (idx >= 0) {
       items[idx] = { ...items[idx], ...updates, id: items[idx].id };
-      this.save();
+      // 异步同步到API
+      syncPut(table, id, updates);
       return items[idx];
     }
     return null;
@@ -292,10 +388,12 @@ const Store = {
 
   remove(table, id) {
     const items = this.data[table];
+    if (!items) return null;
     const idx = items.findIndex(x => String(x.id) === String(id));
     if (idx >= 0) {
       const removed = items.splice(idx, 1)[0];
-      this.save();
+      // 异步同步到API
+      syncDelete(table, id);
       return removed;
     }
     return null;
@@ -304,6 +402,54 @@ const Store = {
   getSeqPrefix(table) {
     const map = { customers: 'C', products: 'P', orders: 'O', returns: 'R', productions: 'PR', warehouse: 'W', shipments: 'S', payments: 'P' };
     return map[table] || 'ID';
+  },
+
+  // ===== 部门管理（异步，写入数据库）=====
+  async createDepartment(data) {
+    try {
+      const result = await apiPost('/api/departments/create', data);
+      if (result.success) {
+        // 同步更新内存
+        const newDept = { id: result.deptId, name: data.name, desc: data.desc, permissions: data.permissions };
+        if (!this.data.departments) this.data.departments = [];
+        this.data.departments.push(newDept);
+        if (!this.data.users) this.data.users = [];
+        this.data.users.push({
+          username: data.username, password: data.password,
+          name: data.userName, deptId: result.deptId, deptName: data.name, role: data.role
+        });
+      }
+      return result;
+    } catch(e) {
+      console.error('创建部门失败:', e);
+      return { error: '网络错误' };
+    }
+  },
+
+  async updatePermissions(deptId, permissions) {
+    try {
+      const result = await apiPut(`/api/departments/${deptId}/permissions`, { permissions });
+      if (result.success) {
+        // 同步更新内存
+        const dept = (this.data.departments || []).find(d => d.id === deptId);
+        if (dept) dept.permissions = permissions;
+      }
+      return result;
+    } catch(e) {
+      console.error('更新权限失败:', e);
+      return { error: '网络错误' };
+    }
+  },
+
+  // ===== 数据导入 =====
+  async importData(data) {
+    try {
+      await apiPost('/api/import', data);
+      this.data = data;
+    } catch(e) {
+      console.error('导入数据失败:', e);
+      this.data = data;
+    }
   },
 
   // ===== Business Logic =====
