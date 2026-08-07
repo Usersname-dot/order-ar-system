@@ -54,8 +54,22 @@ const App = {
   searchQuery: '',
   currentUser: null,
 
-  init() {
-    Store.init();
+  async init() {
+    // 显示加载状态
+    const loadingEl = document.getElementById('loginScreen');
+    if (loadingEl) {
+      const loadingMsg = document.createElement('div');
+      loadingMsg.id = 'appLoadingMsg';
+      loadingMsg.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;color:#1677ff;font-size:16px;';
+      loadingMsg.textContent = '正在连接数据库...';
+      document.body.appendChild(loadingMsg);
+    }
+
+    await Store.init();
+
+    const msgEl = document.getElementById('appLoadingMsg');
+    if (msgEl) msgEl.remove();
+
     this.bindLoginEvents();
     this.bindEvents();
     window.addEventListener('hashchange', () => this.route());
@@ -93,14 +107,18 @@ const App = {
     const passwordInput = document.getElementById('loginPassword');
     const errorDiv = document.getElementById('loginError');
 
-    const doLogin = () => {
+    const doLogin = async () => {
       const username = usernameInput.value.trim();
       const password = passwordInput.value.trim();
       if (!username || !password) {
         errorDiv.textContent = '请输入用户名和密码';
         return;
       }
-      const session = Store.login(username, password);
+      loginBtn.disabled = true;
+      loginBtn.textContent = '登录中...';
+      const session = await Store.login(username, password);
+      loginBtn.disabled = false;
+      loginBtn.textContent = '登录';
       if (session) {
         errorDiv.textContent = '';
         this.currentUser = session;
@@ -291,8 +309,9 @@ const App = {
       if (e.target.id === 'confirmOverlay') UI.closeConfirm();
     });
     // 刷新
-    document.getElementById('refreshBtn').addEventListener('click', () => {
-      Store.save();
+    document.getElementById('refreshBtn').addEventListener('click', async () => {
+      UI.toast('正在同步数据...', 'info');
+      await Store.refresh();
       this.route();
       UI.toast('数据已刷新', 'success');
     });
@@ -742,7 +761,7 @@ const ForgotPwd = {
   },
 
   // ===== 步骤3: 提交新密码 =====
-  handleStep3() {
+  async handleStep3() {
     const errDiv = document.getElementById('forgotError3');
     errDiv.textContent = '';
     const newPwd = document.getElementById('newPassword').value;
@@ -753,7 +772,7 @@ const ForgotPwd = {
     if (newPwd !== confirmPwd) { errDiv.textContent = '两次输入的密码不一致'; return; }
 
     // 更新密码
-    const success = Store.updatePassword(this.state.username, newPwd);
+    const success = await Store.updatePassword(this.state.username, newPwd);
     if (success) {
       this.goStep(4);
       // 3秒后自动跳转登录
@@ -873,7 +892,7 @@ const ProfileForm = {
     }
   },
 
-  save() {
+  async save() {
     const session = Store.getSession();
     if (!session) return;
     const username = document.getElementById('pf_username').value.trim();
@@ -895,7 +914,7 @@ const ProfileForm = {
     const updates = { username, name, role, phone, email };
     if (password) updates.password = password;
 
-    const result = Store.updateUser(session.username, updates);
+    const result = await Store.updateUser(session.username, updates);
     if (result && result.error) {
       UI.toast(result.error, 'error');
       return;
@@ -1806,7 +1825,7 @@ Page.settings = function() {
           <button class="btn btn-default" onclick="exportData()">导出数据</button>
           <button class="btn btn-default" onclick="document.getElementById('importFile').click()">导入数据</button>
           <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
-          <button class="btn btn-danger" onclick="UI.confirm('确定重置所有数据吗？此操作不可恢复！', ()=>{Store.reset();UI.toast('数据已重置','success');App.renderPage('settings');}, '重置数据')">重置数据</button>
+          <button class="btn btn-danger" onclick="UI.confirm('确定重置所有数据吗？此操作不可恢复！', async ()=>{await Store.reset();UI.toast('数据已重置','success');App.renderPage('settings');}, '重置数据')">重置数据</button>
         </div>
         <div class="form-hint mt-8">导出的数据为JSON格式，可用于备份和恢复。重置将恢复到初始演示数据。</div>
       </div>
@@ -1996,7 +2015,7 @@ const DeptForm = {
     `, 'large');
   },
 
-  saveCreate() {
+  async saveCreate() {
     const name = document.getElementById('df_name').value.trim();
     const desc = document.getElementById('df_desc').value.trim();
     const username = document.getElementById('df_username').value.trim();
@@ -2016,15 +2035,16 @@ const DeptForm = {
     }
 
     const nextId = (Store.data.departments || []).reduce((max, d) => Math.max(max, d.id), 0) + 1;
-    const newDept = { id: nextId, name, desc, permissions: perms };
-    Store.data.departments.push(newDept);
 
-    if (!Store.data.users) Store.data.users = [];
-    Store.data.users.push({
-      username, password, name: userName, deptId: nextId, deptName: name, role
+    const result = await Store.createDepartment({
+      name, desc, permissions: perms, username, password, userName, role
     });
 
-    Store.save();
+    if (result.error) {
+      UI.toast(result.error, 'error');
+      return;
+    }
+
     UI.closeModal();
     UI.toast('部门创建成功', 'success');
     App.renderPage('settings');
@@ -2066,14 +2086,13 @@ const DeptForm = {
     `, 'large');
   },
 
-  saveEdit(deptId) {
+  async saveEdit(deptId) {
     const dept = Store.data.departments.find(d => d.id === deptId);
     if (!dept) return;
     const perms = Array.from(document.querySelectorAll('.ef_perm:checked')).map(cb => cb.value);
     if (!perms.includes('dashboard')) perms.push('dashboard');
 
-    dept.permissions = perms;
-    Store.save();
+    await Store.updatePermissions(deptId, perms);
 
     UI.closeModal();
     UI.toast('权限已更新，该部门下次登录后生效', 'success');
@@ -3185,11 +3204,10 @@ function importData(event) {
   const file = event.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = (e) => {
+  reader.onload = async (e) => {
     try {
       const data = JSON.parse(e.target.result);
-      Store.data = data;
-      Store.save();
+      await Store.importData(data);
       UI.toast('数据导入成功', 'success');
       App.renderPage('settings');
     } catch(err) {
