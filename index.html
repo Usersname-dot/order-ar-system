@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+  <meta name="theme-color" content="#1677ff">
+  <meta name="description" content="订单与应收账款管理系统">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="订单应收">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="favicon.ico" type="image/x-icon">
+  <link rel="icon" href="icon-192.png" sizes="192x192" type="image/png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <title>订单与应收账款管理系统</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- 登录界面 -->
+  <div class="login-screen" id="loginScreen">
+    <div class="login-bg-shapes">
+      <div class="shape shape-1"></div>
+      <div class="shape shape-2"></div>
+      <div class="shape shape-3"></div>
+    </div>
+    <div class="login-container">
+      <div class="login-header">
+        <div class="login-logo">
+          <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 3h18v4H3zM3 10h18v4H3zM3 17h18v4H3z"/>
+          </svg>
+        </div>
+        <h1 class="login-title">订单与应收账款管理系统</h1>
+        <p class="login-subtitle">Order & Accounts Receivable System</p>
+      </div>
+      <div class="login-form">
+        <div class="login-field">
+          <label class="login-label">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            用户名
+          </label>
+          <input type="text" id="loginUsername" class="login-input" placeholder="请输入用户名" autocomplete="off">
+        </div>
+        <div class="login-field">
+          <label class="login-label">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+            密码
+          </label>
+          <input type="password" id="loginPassword" class="login-input" placeholder="请输入密码" autocomplete="off">
+        </div>
+        <div class="login-error" id="loginError"></div>
+        <button class="login-btn" id="loginBtn">登 录</button>
+        <div class="login-forgot-link" id="forgotPwdLink">忘记密码？</div>
+      </div>
+      <div class="login-hint-box" id="loginHintBox">
+        <div class="hint-header">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          <span>初始账号提示</span>
+        </div>
+        <div class="hint-grid">
+          <div class="hint-row"><span class="hint-dept">总经办</span><span class="hint-user">boss</span></div>
+          <div class="hint-row"><span class="hint-dept">业务部</span><span class="hint-user">sales</span></div>
+          <div class="hint-row"><span class="hint-dept">生产部</span><span class="hint-user">production</span></div>
+          <div class="hint-row"><span class="hint-dept">发货部</span><span class="hint-user">shipping</span></div>
+          <div class="hint-row"><span class="hint-dept">财务部</span><span class="hint-user">finance</span></div>
+        </div>
+        <div class="hint-password">初始密码均为：<strong>123456</strong></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 忘记密码 / 密码重置界面 -->
+  <div class="forgot-screen hidden" id="forgotScreen">
+    <div class="login-bg-shapes">
+      <div class="shape shape-1"></div>
+      <div class="shape shape-2"></div>
+      <div class="shape shape-3"></div>
+    </div>
+    <div class="forgot-container">
+      <div class="forgot-header">
+        <div class="forgot-back" id="forgotBackBtn">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          <span>返回登录</span>
+        </div>
+        <h1 class="forgot-title">密码重置</h1>
+      </div>
+
+      <!-- 步骤指示器 -->
+      <div class="step-indicator" id="stepIndicator">
+        <div class="step-dot active" data-step="1"><span>1</span><label>验证身份</label></div>
+        <div class="step-line"></div>
+        <div class="step-dot" data-step="2"><span>2</span><label>获取验证码</label></div>
+        <div class="step-line"></div>
+        <div class="step-dot" data-step="3"><span>3</span><label>设置密码</label></div>
+      </div>
+
+      <!-- 步骤1: 输入账号 -->
+      <div class="forgot-step" id="forgotStep1">
+        <div class="forgot-field">
+          <label class="forgot-label">请输入您的登录账号</label>
+          <input type="text" id="forgotUsername" class="forgot-input" placeholder="请输入用户名（如 boss / sales 等）" autocomplete="off">
+        </div>
+        <div class="forgot-field">
+          <label class="forgot-label">请选择账号类型</label>
+          <div class="radio-group">
+            <label class="radio-item active" id="radioEmployee">
+              <input type="radio" name="accountType" value="employee" checked>
+              <span>内部员工账号</span>
+            </label>
+            <label class="radio-item" id="radioCustomer">
+              <input type="radio" name="accountType" value="customer">
+              <span>外部客户账号</span>
+            </label>
+          </div>
+        </div>
+        <div class="forgot-error" id="forgotError1"></div>
+        <button class="forgot-btn" id="step1NextBtn">下一步</button>
+      </div>
+
+      <!-- 步骤2: 选择验证方式 + 输入验证码 -->
+      <div class="forgot-step hidden" id="forgotStep2">
+        <div id="verifyMethodsContainer"></div>
+        <div class="forgot-error" id="forgotError2"></div>
+        <div class="forgot-actions">
+          <button class="forgot-btn-outline" id="step2BackBtn">上一步</button>
+          <button class="forgot-btn" id="step2NextBtn">验证并继续</button>
+        </div>
+      </div>
+
+      <!-- 步骤3: 设置新密码 -->
+      <div class="forgot-step hidden" id="forgotStep3">
+        <div class="forgot-field">
+          <label class="forgot-label">设置新密码</label>
+          <div class="pwd-input-wrap">
+            <input type="password" id="newPassword" class="forgot-input" placeholder="至少8位，含大小写字母和数字" autocomplete="new-password">
+            <button class="pwd-toggle" id="toggleNewPwd" type="button">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+          <div class="pwd-strength" id="pwdStrength"></div>
+        </div>
+        <div class="forgot-field">
+          <label class="forgot-label">确认新密码</label>
+          <div class="pwd-input-wrap">
+            <input type="password" id="confirmPassword" class="forgot-input" placeholder="请再次输入新密码" autocomplete="new-password">
+            <button class="pwd-toggle" id="toggleConfirmPwd" type="button">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="forgot-error" id="forgotError3"></div>
+        <div class="pwd-rules">
+          <div class="pwd-rules-title">密码规则：</div>
+          <ul>
+            <li>长度至少 8 位</li>
+            <li>必须包含大写字母</li>
+            <li>必须包含小写字母</li>
+            <li>必须包含数字</li>
+          </ul>
+        </div>
+        <div class="forgot-actions">
+          <button class="forgot-btn-outline" id="step3BackBtn">上一步</button>
+          <button class="forgot-btn" id="step3SubmitBtn">确认重置密码</button>
+        </div>
+      </div>
+
+      <!-- 步骤4: 成功提示 -->
+      <div class="forgot-step hidden" id="forgotStep4">
+        <div class="forgot-success">
+          <div class="success-icon">
+            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+          </div>
+          <h2>密码修改成功</h2>
+          <p>请使用新密码重新登录，3 秒后自动跳转...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 主应用 -->
+  <div id="app">
+    <!-- 侧边栏 -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-logo">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 3h18v4H3zM3 10h18v4H3zM3 17h18v4H3z"/>
+          </svg>
+        </div>
+        <span class="logo-text">订单应收管理系统</span>
+      </div>
+      <nav class="sidebar-nav" id="sidebarNav">
+        <!-- 导航项由JS动态生成 -->
+      </nav>
+      <div class="sidebar-footer">
+        <div class="user-card" id="userCard">
+          <div class="user-avatar" id="userAvatar">总</div>
+          <div class="user-info">
+            <div class="user-name" id="userName">总经办</div>
+            <div class="user-role" id="userRole">系统管理员</div>
+          </div>
+          <button class="logout-btn" id="logoutBtn" title="退出登录">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 侧边栏遮罩(移动端) -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- 主区域 -->
+    <div class="main-wrapper">
+      <!-- 顶栏 -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="menu-toggle" id="menuToggle" aria-label="菜单">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+          </button>
+          <button class="sidebar-collapse-btn" id="collapseBtn" aria-label="折叠侧边栏">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"/></svg>
+          </button>
+          <div class="breadcrumb" id="breadcrumb">工作台</div>
+        </div>
+        <div class="topbar-right">
+          <div class="topbar-search">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" class="search-icon"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4-4"/></svg>
+            <input type="text" id="globalSearch" placeholder="搜索..." class="search-input">
+          </div>
+          <div class="topbar-actions">
+            <button class="icon-btn" title="通知" id="notifBtn">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/></svg>
+              <span class="badge" id="notifBadge">0</span>
+            </button>
+            <button class="icon-btn" title="刷新" id="refreshBtn">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.5 9a9 9 0 0114.8-3.4L23 10M1 14l4.7 4.4A9 9 0 0020.5 15"/></svg>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <!-- 内容区域 -->
+      <main class="content" id="content">
+        <!-- 由JS动态渲染 -->
+      </main>
+    </div>
+
+    <!-- 底部导航(移动端) -->
+    <nav class="bottom-nav" id="bottomNav">
+      <!-- 由JS动态生成 -->
+    </nav>
+  </div>
+
+  <!-- 模态框容器 -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal" id="modal">
+      <div class="modal-header">
+        <h3 class="modal-title" id="modalTitle">标题</h3>
+        <button class="modal-close" id="modalClose">&times;</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-footer" id="modalFooter"></div>
+    </div>
+  </div>
+
+  <!-- Toast容器 -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- 确认对话框容器 -->
+  <div class="confirm-overlay" id="confirmOverlay">
+    <div class="confirm-dialog">
+      <div class="confirm-icon" id="confirmIcon"></div>
+      <h3 class="confirm-title" id="confirmTitle">确认操作</h3>
+      <p class="confirm-message" id="confirmMessage"></p>
+      <div class="confirm-actions">
+        <button class="btn btn-default" id="confirmCancel">取消</button>
+        <button class="btn btn-danger" id="confirmOk">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>
